@@ -1,1 +1,1 @@
-from .Model import NeRF_MLP
+from .Model import NeRF_MLP, nerf_forward

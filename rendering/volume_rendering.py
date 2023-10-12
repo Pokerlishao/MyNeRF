@@ -1,7 +1,11 @@
+import torch
+from torch import nn
+
+
 def cumprod_exclusive(x):
     # similar to tf.math.cumprod(..., exclusive=True)
     # [2,3,4,5] -> [1,2,6,24]
-    cumprod = torch.cumprod(tensor, -1)
+    cumprod = torch.cumprod(x, -1)
     cumprod = torch.roll(cumprod, 1, -1)
     cumprod[..., 0] = 1.
     return cumprod

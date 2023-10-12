@@ -1,4 +1,6 @@
 import torch
+import matplotlib.pyplot as plt
+plt.switch_backend('tkagg')
 
 def sample_stratified(rays_o, rays_d, near, far, n_samples, perturb=True, inverse_depth=False, device=None):
     t_vals = torch.linspace(0., 1., n_samples, device=device)
@@ -28,6 +30,14 @@ def sample_pdf(bins,  weights, n_samples, perturb = False, device=None):
     # convert PDF to cumulative distribution function(CDF) 对PDF进行积分
     cdf = torch.cumsum(pdf, dim=-1) # [n_rays, weights.shape[-1]]
     cdf = torch.concat([torch.zeros_like(cdf[..., :1]), cdf], dim=-1)
+    
+    if not perturb:
+        u = torch.linspace(0., 1., n_samples, device=device)
+        u = u.expand(list(cdf.shape[:-1]) + [n_samples]) # [n_rays, n_samples]
+    else:
+        u = torch.rand(list(cdf.shape[:-1]) + [n_samples], device=device) # [n_rays, n_samples]
+        
+    u = u.contiguous()
     indexs = torch.searchsorted(cdf, u, right=True)
     
     # Clamp indices that are out of bounds.
@@ -36,17 +46,9 @@ def sample_pdf(bins,  weights, n_samples, perturb = False, device=None):
     indexs_g = torch.stack([below, above], dim=-1) # [n_rays, n_samples, 2]
     
     # Sample from cdf and the corresponding bin centers.
-    matched_shape = list(inds_g.shape[:-1]) + [cdf.shape[-1]]
+    matched_shape = list(indexs_g.shape[:-1]) + [cdf.shape[-1]]
     cdf_g = torch.gather(cdf.unsqueeze(-2).expand(matched_shape), dim=-1, index=indexs_g)
     bins_g = torch.gather(bins.unsqueeze(-2).expand(matched_shape), dim=-1, index=indexs_g)
-
-    if not perturb:
-        u = torch.linspace(0., 1., n_samples, device=device)
-        u = u.expand(list(cdf.shape[:]) + [n_samples]) # [n_rays, n_samples]
-    else:
-        u = torch.rand(list(cdf.shape[:]) + [n_samples], device=device) # [n_rays, n_samples]
-        
-    u = u.contiguous()
     # Convert samples to ray length.
     denom = (cdf_g[..., 1] - cdf_g[..., 0])
     denom = torch.where(denom < 1e-5, torch.ones_like(denom), denom)
@@ -55,10 +57,10 @@ def sample_pdf(bins,  weights, n_samples, perturb = False, device=None):
     return samples # [n_rays, n_samples] 
 
 
-def sample_hierarchical(  rays_o,  rays_d,  z_vals,  weights,  n_samples,  perturbFalse):
+def sample_hierarchical(  rays_o,  rays_d,  z_vals,  weights,  n_samples,  perturb=False,device=None):
     # Draw samples from PDF using z_vals as bins and weights as probabilities.
     z_vals_mid = .5 * (z_vals[..., 1:] + z_vals[..., :-1])
-    new_z_samples = sample_pdf(z_vals_mid, weights[..., 1:-1], n_samples, perturb=perturb)
+    new_z_samples = sample_pdf(z_vals_mid, weights[..., 1:-1], n_samples, perturb=perturb, device=device)
     new_z_samples = new_z_samples.detach()
 
     # Resample points from ray based on PDF.
